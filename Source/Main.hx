@@ -3,36 +3,31 @@ package;
 
 import openfl.display.Sprite;
 import sys.db.Types;
+import noriko.str.JString;
+import haxe.Utf8;
 
-class User extends sys.db.Object {
-    public var id : SId;
-    public var name : SString<32>;
-    public var birthday : SNull<SDate>;
-    public var phoneNumber : SNull<SText>;
-}
+//class Reading;
 
 class Kanji extends sys.db.Object
 {
 	public var id : SId;
 	public var literal : SString<1>; 
-	//public var ja_on : SNull<SData<List<String>>>; // all the SData doesn't allow search
-	//public var ja_kun : SNull<SData<List<String>>>;
-	//public var trad_en : SData<List<String>>;
-	//public var trad_fr : SNull<SData<List<String>>>;
-	/*@relation(onid) var ja_on : Reading;
-	@relation(kunid) var ja_kun : Reading;
-	@relation(enid) var trad_en : Reading;
-	@relation(frid) var trad_fr : Reading;*/
 	public var jlpt : SNull<SInt>;
 	public var strokes : SNull<SInt>;
 	public var grade : SNull<SInt>;
+
+	//not in the sql entity:
+	@:skip public var readings : List<Reading>;
+	public function load()
+	{
+		readings = Reading.manager.search($kid == id);
+	}
 }
 
-//@:id(id, kid)
 class Reading extends sys.db.Object
 {
 	public var id : SId;
-	public var text : SString<50>;
+	public var text : SString<100>;
 	@:relation(kid) public var kanji : Kanji;
 	public var type : SNull<SString<3>>;
 }
@@ -44,7 +39,7 @@ class Main extends Sprite {
 		
 		super ();
 		
-				var connData = {
+		var connData = {
 			host: "172.17.0.2",
 			port: 3306,
 			user: "foo",
@@ -53,9 +48,7 @@ class Main extends Sprite {
 		};
 
 		var con = sys.db.Mysql.connect(connData);
-		con.request("SET NAMES 'utf8mb4';");
-		//con.request("create table testapp(v varchar(30));");
-		//con.request("insert into testapp values ('desvaleurs putain');");
+		//con.request("SET NAMES 'utf8mb4';");
 
 		sys.db.Manager.cnx = con;
 		sys.db.Manager.initialize();
@@ -69,21 +62,112 @@ class Main extends Sprite {
  		   sys.db.TableCreate.create(Reading.manager);
 		}
 
+		//xml2Sql();
 		
-		//var u = new User();
-		
-		//u.name = "tolilo亜";
-		
-		//u.birthday = Date.now();
-		//u.insert();
+		//to do add more criteria(jlpt)
+		var q = Sys.stdin().readLine();
+		var k = null;
+		if(isKanji(q))
+		{
+			k = Kanji.manager.search($literal == q);
+		}
+		else
+		{ //todo search with like
+			k = Reading.manager.search($text == q).map(function (r) return r.kanji);
+
+			if(!isJapanese(q))
+			{
+				var kkana = JString.romajiToKana(q);
+				var hkana = toHiragana(kkana); 
+
+				for(r in Reading.manager.search($text == hkana || $text == kkana))
+				{
+					k.add(r.kanji);
+				}
+			}
+		}
+
+		//Displaying the kanji list:
+		for(a in k)
+		{
+			a.load();
+			var s = a.literal + " jlpt" + a.jlpt;
+			for(r in a.readings)
+			{
+				s += "\n\t" + r.text;
+			}
+			trace(s);
+		}
+	}
+
+
+	
+	function isKanji(str) 
+	{
+    	var reg = ~/[\x{4E00}-\x{9FBF}]/u;
+    	return reg.match(str);
+	}
+
+	function isHiragana(str) {
+    	var reg = ~/[\x{3040}-\x{309F}]/u;
+    	return reg.match(str);
+	}
+
+	function isKatakana(str) {
+	    var reg = ~/[\x{30A0}-\x{30FF}]/u;
+	    return reg.match(str);
+	}
+
+	function isJapanese(str) {
+    	return isKanji(str) || isHiragana(str) || isKatakana(str);
+	}
+
+	function find(str:String, c:Int):Int
+	{
+		var i = 0;
+		var found = false;
+		Utf8.iter(str, function(a)
+			{
+				if(!found && a!=c)
+				{
+					i++;
+				}
+				else
+				{
+					found = true;
+				}
+			});
+		return i;
+	}
+
+	function toHiragana(str:String):String
+	{
+		var hiragana:String = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわゐゑをん";
+		var katakana:String = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶ";
+
+		var r = new Utf8();
+		Utf8.iter(str, function(c) 
+			{
+				var index = find(katakana, c); 
+				var h = Utf8.charCodeAt(hiragana, index);
+				r.addChar(h);
+			});
+
+		return r.toString();
+	}
+
+	function xml2Sql()
+	{
 		var xml:Xml = Xml.parse(sys.io.File.getContent("/home/crimson-hawk/kanjidic2.xml"));
 		var i = 0;
 
 		for(e in xml.firstElement().elementsNamed("character"))
 		{
-			//trace(xml.firstElement().elementsNamed("character").next().firstElement().nodeName);
-			//var s = xml.firstElement().elementsNamed("character").next().firstElement().firstChild().nodeValue;
-			//trace(s);
+			/*if(i < 1875)
+			{
+				i++;
+				continue;
+			}*/
 			trace(e.elementsNamed("literal").next().firstChild().nodeValue);
 			var k = new Kanji();
 
@@ -93,17 +177,17 @@ class Main extends Sprite {
 				var misc = e.elementsNamed("misc").next();
 				if(misc.elementsNamed("jlpt").hasNext())
 				{
-					trace(misc.elementsNamed("jlpt").next().firstChild().nodeValue);
+					//trace(misc.elementsNamed("jlpt").next().firstChild().nodeValue);
 					k.jlpt = Std.parseInt(misc.elementsNamed("jlpt").next().firstChild().nodeValue);
 				}
 				if(misc.elementsNamed("grade").hasNext())
 				{
-					trace(misc.elementsNamed("grade").next().firstChild().nodeValue);
+					//trace(misc.elementsNamed("grade").next().firstChild().nodeValue);
 					k.grade = Std.parseInt(misc.elementsNamed("grade").next().firstChild().nodeValue);
 				}
 				if(misc.elementsNamed("stroke_count").hasNext())
 				{
-					trace(misc.elementsNamed("stroke_count").next().firstChild().nodeValue);
+					//trace(misc.elementsNamed("stroke_count").next().firstChild().nodeValue);
 					k.strokes = Std.parseInt(misc.elementsNamed("stroke_count").next().firstChild().nodeValue);
 				}
 			}
@@ -122,21 +206,13 @@ class Main extends Sprite {
 						var t = line.get("r_type");
 						if(t == "ja_on" || t == "ja_kun")
 						{
-							trace(line.firstChild().nodeValue);
+							//trace(line.firstChild().nodeValue);
 							var r = new Reading();
 							r.text = line.firstChild().nodeValue;
-							//r.kanji = k.id;
 							r.kanji = k;
 							r.type = t.substr(3, 3);
 							r.insert();
-							//trace(k.ja_on.next());
-							//k.ja_on.add(line.firstChild().nodeValue);
 						}
-						/*else if(line.get("r_type") == "ja_kun")
-						{
-							trace(line.firstChild().nodeValue);
-							k.ja_kun.add(line.firstChild().nodeValue);
-						}*/
 					}
 
 					var it = rdmean.elementsNamed("meaning");
@@ -145,46 +221,30 @@ class Main extends Sprite {
 					{
 						var line = it.next();
 						var t = line.get("m_lang");
+						//trace("Meaning");
 
 						if(t == null || t == "fr")
 						{
-							trace(line.firstChild().nodeValue);
-							//k.trad_en.add(line.firstChild().nodeValue);
+							//trace(line.firstChild().nodeValue);
 							var r = new Reading();
 							r.text = line.firstChild().nodeValue;
-							//r.kanji = k.id;
 							r.kanji = k;
 							r.type = if(t==null) "en" else t;
 							r.insert();
 						}
-						/*else if(line.get("m_lang") == "fr")
-						{
-							trace(line.firstChild().nodeValue);
-							//k.trad_fr.add(line.firstChild().nodeValue);
-						}*/
 					}
 				}
 			}
 
 			i++;
-			if(i > 10)
+			/*if(i > 10)
 			{
 				break;
+			}*/
 			}
 		}
 
-		/*for(r in Reading.manager.search($text.like("%a%") && $type=="en"))
-		{
-			trace(r.kanji.literal);
-			trace(r.text);
-			trace("Readings :");
-			for(r2 in Reading.manager.search($kanji == r.kanji && ($type=="kun" || $type=="on")))
-			{
-				trace(r2.text);
-			}
-		}*/
-
+		trace(i + " kanjis insérés dans la base de donnée");
 	}
-	
-	
 }
+
