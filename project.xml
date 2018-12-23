@@ -9,6 +9,9 @@
 	<haxelib name="openfl" />
 	<haxelib name="record-macros" />
 	<haxelib name="noriko" />
+	<haxelib name="haxeui-core" />
+	<haxelib name="haxeui-openfl" />
+	<haxelib name="haxe-strings" />
 	
 	<assets path="Assets" rename="assets" />
 	

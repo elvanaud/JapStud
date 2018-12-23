@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vbox>
+	<style>
+		#label1
+		{
+			font-name: "font/a.ttf";
+			/*font-name: "fonts/Roboto-Regular.ttf";*/
+			color: red;
+			font-size: 30px;
+		}
+		#t1
+		{
+			color: red;
+		}
+	</style>
+	<label
+		id="label1"
+		text="Simple HaxeUI applicationねじりb"
+		 />
+	<button text="Click me!" id="b1" />
+	<textfield id="t1" width="100" text="hello world..."/>
+
+</vbox>

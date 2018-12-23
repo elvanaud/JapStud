@@ -3,11 +3,24 @@ package;
 
 import openfl.display.Sprite;
 import sys.db.Types;
+
 import noriko.str.JString;
 import haxe.Utf8;
 
-//class Reading;
+import haxe.ui.Toolkit;
+import haxe.ui.HaxeUIApp;
+import haxe.ui.core.Screen;
+import haxe.ui.core.Component;
+import haxe.ui.core.*;
+import haxe.ui.components.*;
+import haxe.ui.macros.ComponentMacros;
 
+using hx.strings.Strings;
+import hx.strings.*;
+
+//class Reading;
+//record-macros ORM --> see through ufront-orm (maybe it will work on js + it has ManyToMany relations)
+//TODO:Make ufront-orm work
 class Kanji extends sys.db.Object
 {
 	public var id : SId;
@@ -33,7 +46,61 @@ class Reading extends sys.db.Object
 }
 
 class Main extends Sprite {
-	
+	private var main:Component;
+
+	public function search(e:MouseEvent)
+	{
+		//todo: more criteria
+		var txt = main.findComponent("t1", TextField);
+		var lbl = main.findComponent("label1", Label);
+		trace(txt.text);
+		var k = null;
+		var q = txt.text;
+		if(isKanji(q))
+		{
+			k = Kanji.manager.search($literal == q);
+		}
+		else
+		{ //todo search with like
+			k = Reading.manager.search($text == q).map(function (r) return r.kanji);
+
+			trace(isRomaji(q));
+			if(!isJapanese(q) && isRomaji(q))
+			{
+				//romajiToKana ne connait pas le tsu (tu), je l'ai donc rajouté dans le code de la library
+				var kkana = JString.romajiToKana(q); //ne gère pas les acents: ca le fait planter
+				var hkana = toHiragana(kkana); 
+
+				trace(kkana);
+				trace(hkana);
+
+				for(r in Reading.manager.search($text == hkana || $text == kkana))
+				{
+					k.add(r.kanji);
+				}
+			}
+		}
+
+		//Displaying the kanji list:
+		for(a in k)
+		{
+			if(a.jlpt == null)//maybe should place it in the sql request
+			{
+				//k.remove(a); continue;
+			}
+			a.load();
+			var s = a.literal + " jlpt" + a.jlpt;
+			for(r in a.readings)
+			{
+				s += "\n\t" + r.text;
+				lbl.text = a.literal; //r.text;
+			}
+			trace(s);
+
+		}
+
+		//lbl.text = "シュツhhvh";
+	}
 	
 	public function new () {
 		
@@ -63,41 +130,20 @@ class Main extends Sprite {
 		}
 
 		//xml2Sql();
+
+		Toolkit.init();
 		
-		//to do add more criteria(jlpt)
-		var q = Sys.stdin().readLine();
-		var k = null;
-		if(isKanji(q))
-		{
-			k = Kanji.manager.search($literal == q);
-		}
-		else
-		{ //todo search with like
-			k = Reading.manager.search($text == q).map(function (r) return r.kanji);
-
-			if(!isJapanese(q))
-			{
-				var kkana = JString.romajiToKana(q);
-				var hkana = toHiragana(kkana); 
-
-				for(r in Reading.manager.search($text == hkana || $text == kkana))
-				{
-					k.add(r.kanji);
-				}
-			}
-		}
-
-		//Displaying the kanji list:
-		for(a in k)
-		{
-			a.load();
-			var s = a.literal + " jlpt" + a.jlpt;
-			for(r in a.readings)
-			{
-				s += "\n\t" + r.text;
-			}
-			trace(s);
-		}
+		//var app = new HaxeUIApp();
+		
+		//app.ready(function() {
+			main = ComponentMacros.buildComponent("Assets/Xml/UI.xml");
+		//	app.addComponent(main);
+		//	app.start();
+		//});
+		var btn = main.findComponent("b1", Button);
+		btn.text = "oraaaaaaaaaa";
+		btn.registerEvent(MouseEvent.CLICK, search);
+		Screen.instance.addComponent(main);
 	}
 
 
@@ -109,20 +155,36 @@ class Main extends Sprite {
 	}
 
 	function isHiragana(str) {
-    	var reg = ~/[\x{3040}-\x{309F}]/u;
+    	var reg = ~/$[\x{3040}-\x{309F}]*^/u;
     	return reg.match(str);
 	}
 
 	function isKatakana(str) {
-	    var reg = ~/[\x{30A0}-\x{30FF}]/u;
+	    var reg = ~/[\x{30A0}-\x{30FF}]/u; //need to make that work
 	    return reg.match(str);
+	}
+
+	//could be isASCII
+	//returns false with accents
+	function isRomaji(str:String8)
+	{
+		var romaji = true;
+	    str.iterate(function(s)
+	    {
+	    	if(!(s.charCodeAt8(0) == "." || (s.charCodeAt8(0) >= "a".charCodeAt8(0) && s.charCodeAt8(0) <= "z".charCodeAt8(0)) 
+	    		|| s.charCodeAt8(0) >= "A".charCodeAt8(0) && s.charCodeAt8(0) <= "Z".charCodeAt8(0)))
+	    	{
+	    		romaji=false;
+	    	}
+	    }, "");
+	    return romaji;
 	}
 
 	function isJapanese(str) {
     	return isKanji(str) || isHiragana(str) || isKatakana(str);
 	}
 
-	function find(str:String, c:Int):Int
+	/*function find(str:String, c:Int):Int
 	{
 		var i = 0;
 		var found = false;
@@ -138,22 +200,31 @@ class Main extends Sprite {
 				}
 			});
 		return i;
-	}
+	}*/
 
 	function toHiragana(str:String):String
 	{
 		var hiragana:String = "ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわゐゑをん";
 		var katakana:String = "ァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロヮワヰヱヲンヴヵヶ";
 
-		var r = new Utf8();
+		var hira = hiragana.split8("");
+		var kata = katakana.split8("");
+
+		for ( i in 0 ... hira.length ) {
+			str = str.split8( kata[i] ).join( hira[i] );
+		}
+
+		return str;
+		/*
+		if(!isJapanese(str)) return "";
 		Utf8.iter(str, function(c) 
 			{
 				var index = find(katakana, c); 
-				var h = Utf8.charCodeAt(hiragana, index);
-				r.addChar(h);
+					var h = Utf8.charCodeAt(hiragana, index);
+					r.addChar(h);
 			});
 
-		return r.toString();
+		return r.toString();*/
 	}
 
 	function xml2Sql()
@@ -241,7 +312,6 @@ class Main extends Sprite {
 			{
 				break;
 			}*/
-			}
 		}
 
 		trace(i + " kanjis insérés dans la base de donnée");
